@@ -1,7 +1,5 @@
 # Scout AGV (Phase 1 complete)
 
-Standalone project. You do NOT need the old Killswitch repo.
-
 ## 1. Upload the firmware
 Open `firmware/agv_drive/agv_drive.ino` in the Arduino IDE (needs the Adafruit PWM Servo Driver library),
 choose Board = Arduino Uno and your port, then Upload.
