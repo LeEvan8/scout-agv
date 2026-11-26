@@ -41,6 +41,11 @@ P does not keep it driving (E07), overflow line ignored, floor drive.
 - models/*.onnx are git-ignored; recreate with tools/export_model.py in a throwaway venv (needs torch).
 - LICENSE RISK: YOLO11 weights/code are AGPL-3.0. Fine for a public AGPL repo / testing; commercial product needs an
   Ultralytics license or a permissively licensed model (decide before pilot/sales).
+- Step 3 app.py (pygame): main loop 30 Hz reads keys, sends V (only while armed / 0.5 s after R), runs game.py.
+  Vision runs in vision/worker.py thread; main loop must check VisionResult.age (STALE_S 0.5) before any
+  vision-driven motion. robot_link.py: non-blocking serial, auto-reconnect, never arms by itself.
+  game.py: SEARCH/DETECTED/TRACKING(after 1 s)/CAUGHT(3 s banner); caught tracks drawn grey and ignored;
+  a caught student who leaves view for >6 frames gets a new track and counts as new (known limit).
 - Auto-tracking decision (2026-11-26): turn in place only, level-1 speed, only while teacher holds T; stop on target
   lost, stale frame, or SPACE.
 
