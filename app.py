@@ -20,6 +20,7 @@ import cv2
 import numpy as np
 import pygame
 
+from autotrack import AutoTracker
 from game import CAUGHT, DETECTED, SEARCH, TRACKING, Game
 from robot_link import RobotLink
 from vision import FrameSource, PoseDetector, draw_tracks
@@ -73,6 +74,7 @@ def main() -> int:
     source = FrameSource(args.source).start()
     vision = VisionWorker(source, PoseDetector(args.model, score_threshold=args.conf)).start()
     game = Game()
+    autotrack = AutoTracker()
 
     pygame.init()
     screen = pygame.display.set_mode((WIN_W, WIN_H))
@@ -105,7 +107,8 @@ def main() -> int:
                     elif ev.key == pygame.K_r:
                         robot.arm()
                     elif ev.key == pygame.K_c:
-                        game.catch(now)
+                        if game.catch(now):
+                            robot.caught_led()
                     elif ev.key == pygame.K_n:
                         game.new_round()
                     elif ev.key in SPEED_LEVELS:
@@ -114,21 +117,36 @@ def main() -> int:
                     if btn_estop.hit(ev.pos):
                         robot.estop()
                     elif btn_caught.hit(ev.pos):
-                        game.catch(now)
-
-            # ------------------------------------------------------------ drive (every loop -> feeds deadman)
-            keys = pygame.key.get_pressed()
-            fwd = (keys[pygame.K_w] or keys[pygame.K_UP]) - (keys[pygame.K_s] or keys[pygame.K_DOWN])
-            turn = (keys[pygame.K_d] or keys[pygame.K_RIGHT]) - (keys[pygame.K_a] or keys[pygame.K_LEFT])
-            left = max(-1.0, min(1.0, fwd + turn)) * speed
-            right = max(-1.0, min(1.0, fwd - turn)) * speed
-            robot.drive(left, right)
+                        if game.catch(now):
+                            robot.caught_led()
 
             # ------------------------------------------------------------ vision + game
             result = vision.latest()
             tracks = result.tracks if result else []
             game.update(tracks, now)
             stale = result is None or result.age > STALE_S
+
+            # ------------------------------------------------------------ drive (every loop -> feeds deadman)
+            keys = pygame.key.get_pressed()
+            fwd = (keys[pygame.K_w] or keys[pygame.K_UP]) - (keys[pygame.K_s] or keys[pygame.K_DOWN])
+            turn = (keys[pygame.K_d] or keys[pygame.K_RIGHT]) - (keys[pygame.K_a] or keys[pygame.K_LEFT])
+            manual = fwd != 0 or turn != 0
+            left = max(-1.0, min(1.0, fwd + turn)) * speed
+            right = max(-1.0, min(1.0, fwd - turn)) * speed
+            # Auto-track: only while T is held and no manual key; turn in place, decided HERE from a fresh result.
+            t_held = bool(keys[pygame.K_t])
+            allowed = not manual and game.state in (DETECTED, TRACKING)
+            # T itself is passed even when not allowed, so the 4 s block only clears when T is released.
+            auto_turn = autotrack.update(t_held, robot.armed and robot.alive, result if allowed else None,
+                                         game.target_id, now)
+            if t_held and not autotrack.blocked:
+                if manual:
+                    autotrack.reason = "manual keys override"
+                elif not allowed:
+                    autotrack.reason = f"nothing to track ({game.state})"
+            if t_held and not manual:
+                left, right = auto_turn, -auto_turn       # 0,0 whenever auto-track says no
+            robot.drive(left, right)
 
             if result is not None and result.frame_index != shown_index:
                 view = result.image.copy()
@@ -173,10 +191,11 @@ def main() -> int:
                 (f"people in view: {people}", FG),
                 (f"vision {result.fps:4.1f} fps  age {result.age * 1000:3.0f} ms" if result else "vision: starting...",
                  RED if stale else DIM),
-                ("", FG),
+                (f"auto: {autotrack.reason}"[:36],
+                 RED if autotrack.reason.startswith("STOPPED") else (GREEN if autotrack.turn else DIM)),
                 ("R arm   WASD drive   1/2/3 speed", DIM),
-                ("SPACE e-stop   C caught", DIM),
-                ("N new round   ESC quit", DIM),
+                ("hold T auto-track   C caught", DIM),
+                ("SPACE e-stop  N new round  ESC quit", DIM),
             ]
             for i, (text, color) in enumerate(rows):
                 screen.blit(font.render(text, True, color), (PANEL_X, 215 + i * 21))

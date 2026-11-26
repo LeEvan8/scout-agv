@@ -9,12 +9,13 @@ until the teacher clicks "Student caught". Startup MVP; user is a student founde
 - Arduino Uno R3 (5V logic, 115200 baud) -> PCA9685 over I2C (A4 SDA, A5 SCL, addr 0x40, 50 Hz).
 - Two continuous-rotation MG996R servos as wheels: CH0 = left, CH1 = right. Open loop, no encoders.
 - D8 -> PCA9685 OE (HIGH = all motor outputs off) with a 10k pull-up to VCC. Optional HC-SR04: D9 TRIG, D10 ECHO.
+- "Caught" LED: D7 -> 220 ohm -> red LED (+ long leg) -> GND. Signal only (v1.5-led).
 - Motor power: 5V >=3A battery -> power switch -> PCA9685 V+ terminal. Uno 5V only feeds logic. Grounds common.
-- Camera node (separate, Wi-Fi only): ESP32-S3 OV5640 streaming MJPEG now; ESP32-P4-EYE planned later.
+- Camera node (separate, Wi-Fi only): ESP32-P4-EYE in use (2026-11-26, works well with app.py). ESP32-S3 OV5640 = spare.
 
-## Firmware (firmware/agv_drive/agv_drive.ino) — Phase 1 COMPLETE (v1.4-dither, 2026-11-26)
+## Firmware (firmware/agv_drive/agv_drive.ino) — Phase 1 COMPLETE (v1.4-dither, 2026-11-26); v1.5-led adds L
 Serial ASCII, newline-terminated: `M1*7C` arm (XOR checksum), `M0` disarm, `Z` e-stop, `V<l>,<r>` speed % (-100..100),
-`P` ping, `S` status. Replies `OK ..`, `ERR Exx ..`, status frames `ST <l>,<r>,<armed>,<dist>,<uptime>`.
+`P` ping, `S` status, `L1`/`L0` caught LED (auto-off 3 s, works disarmed, no deadman feed). Replies `OK ..`, `ERR Exx ..`, status frames `ST <l>,<r>,<armed>,<dist>,<uptime>`.
 Boots e-stopped. 250 ms deadman (ERR E07). Speed hard-capped at MAX_SPEED_PCT 30. Accel-limited.
 **Only V (and M1 arming) feed the deadman; P and S do NOT.** Any host app must stream V (teleop does, 20 Hz).
 Over-long serial lines (>39 chars) are dropped up to their newline.
@@ -47,7 +48,9 @@ P does not keep it driving (E07), overflow line ignored, floor drive.
   game.py: SEARCH/DETECTED/TRACKING(after 1 s)/CAUGHT(3 s banner); caught tracks drawn grey and ignored;
   a caught student who leaves view for >6 frames gets a new track and counts as new (known limit).
 - Auto-tracking decision (2026-11-26): turn in place only, level-1 speed, only while teacher holds T; stop on target
-  lost, stale frame, or SPACE.
+  lost, stale frame, or SPACE. Built in autotrack.py (step 4): centre band +/-15 % -> still, else 3..10 % turn;
+  needs armed + target seen in THIS frame + video <= 0.4 s old; manual keys override; > 4 s non-stop turning ->
+  blocked until T released. With the laptop webcam (not on the robot) the loop is open: test direction only.
 
 ## Rules — do not break these
 - Never raise MAX_SPEED_PCT, remove/lengthen the deadman (keep 250 ms), or bypass the checksummed arm without asking me.

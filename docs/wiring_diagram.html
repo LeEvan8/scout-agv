@@ -1,0 +1,219 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Scout AGV wiring</title>
+<style>
+  html,body{margin:0;background:#f7f5ef}
+  text{font-family:"Segoe UI",Arial,sans-serif}
+  .mono{font-family:Consolas,monospace;font-weight:700;font-size:13px}
+  .h{font-weight:700}
+  .w5v{stroke:#d22;stroke-width:3;fill:none}
+  .wgnd{stroke:#222;stroke-width:3;fill:none}
+  .wsig{stroke:#e88a1a;stroke-width:3;fill:none}
+  .wi2c{stroke:#1e9e4a;stroke-width:3;fill:none}
+  .wopt{stroke:#999;stroke-width:3;fill:none;stroke-dasharray:7 5}
+  .wtie{stroke:#2a62c9;stroke-width:3;fill:none}
+  .wled{stroke:#8a3fd1;stroke-width:3;fill:none}
+  .halo{stroke:#f7f5ef;stroke-width:9;fill:none}
+  .pin{stroke:#fff;stroke-width:2}
+</style></head><body>
+<svg xmlns="http://www.w3.org/2000/svg" width="1720" height="1200" viewBox="0 0 1720 1200" fill="#222">
+  <rect x="10" y="10" width="1700" height="1180" rx="14" fill="#fbfaf6" stroke="#ddd6c4" stroke-width="2"/>
+  <text x="40" y="52" font-size="30" class="h">Scout AGV — Wiring v1.5 (5 V battery + "caught" LED)</text>
+  <text x="40" y="78" font-size="15" fill="#555">Uno + PCA9685 drive two continuous-rotation wheels · motors run from a 5 V battery behind a switch · D8 → OE = hardware stop · D7 → red LED lights 3 s when the teacher clicks "Student caught"</text>
+
+  <!-- ===================== rails (drawn first, wires cross over them) ===================== -->
+  <rect x="380" y="650" width="940" height="230" rx="10" fill="#efe6cf" stroke="#d8cba6" stroke-width="2"/>
+  <text x="395" y="670" font-size="13" class="h" fill="#6b5a2e">BREADBOARD POWER RAILS</text>
+  <line x1="80" y1="690" x2="1310" y2="690" class="w5v"/>
+  <line x1="80" y1="720" x2="1310" y2="720" class="wgnd"/>
+  <text x="1150" y="684" font-size="13" fill="#b11" class="h">+ LOGIC 5 V (from Uno)</text>
+  <text x="1150" y="738" font-size="13" class="h">− GND</text>
+  <line x1="380" y1="820" x2="1310" y2="820" class="w5v" stroke-width="5"/>
+  <line x1="380" y1="850" x2="1310" y2="850" class="wgnd" stroke-width="5"/>
+  <text x="400" y="812" font-size="13" fill="#b11" class="h">+ MOTOR 5 V (battery, after switch)</text>
+  <text x="600" y="870" font-size="13" class="h">− MOTOR GND</text>
+  <!-- ground tie -->
+  <line x1="1300" y1="720" x2="1300" y2="850" class="wtie"/>
+  <circle cx="1300" cy="720" r="5" fill="#2a62c9"/><circle cx="1300" cy="850" r="5" fill="#2a62c9"/>
+  <text x="1312" y="790" font-size="12" fill="#2a62c9" class="h">GNDs tied</text>
+
+  <!-- ===================== laptop ===================== -->
+  <rect x="60" y="95" width="300" height="62" rx="8" fill="#fff" stroke="#222" stroke-width="2"/>
+  <text x="210" y="120" font-size="16" text-anchor="middle" class="h">Teacher's laptop</text>
+  <text x="210" y="142" font-size="12" text-anchor="middle" fill="#555">app.py · vision · "Student caught" → sends L1</text>
+  <line x1="170" y1="157" x2="170" y2="195" stroke="#222" stroke-width="4"/>
+  <text x="185" y="182" font-size="12" class="h">USB — commands + Uno power</text>
+
+  <!-- ===================== Uno ===================== -->
+  <rect x="60" y="195" width="230" height="320" rx="10" fill="#0e7f8c"/>
+  <text x="175" y="225" font-size="18" text-anchor="middle" fill="#fff" class="h">Arduino Uno R3</text>
+  <text x="175" y="244" font-size="12" text-anchor="middle" fill="#cfeff3">CH340 · fw v1.5-led · 5 V logic</text>
+  <rect x="80" y="290" width="80" height="100" rx="4" fill="#1d1d1d"/>
+  <text x="120" y="335" font-size="11" text-anchor="middle" fill="#fff" class="h">ATmega328P</text>
+  <g class="mono" fill="#fff">
+    <text x="275" y="265" text-anchor="end" fill="#fff">A4 · SDA</text>
+    <text x="275" y="295" text-anchor="end" fill="#fff">A5 · SCL</text>
+    <text x="275" y="335" text-anchor="end" fill="#fff">D8 · OE</text>
+    <text x="275" y="375" text-anchor="end" fill="#fff">D9 · TRIG</text>
+    <text x="275" y="405" text-anchor="end" fill="#fff">D10 · ECHO</text>
+    <text x="275" y="445" text-anchor="end" fill="#fff">D7 · LED</text>
+    <text x="275" y="475" text-anchor="end" fill="#fff">GND</text>
+    <text x="110" y="505" text-anchor="middle" fill="#fff">GND</text>
+    <text x="240" y="505" text-anchor="middle" fill="#fff">5V</text>
+  </g>
+
+  <!-- I2C + OE -->
+  <path d="M290 260 H760" class="wi2c"/><text x="480" y="253" font-size="12">I²C data</text>
+  <path d="M290 290 H760" class="wi2c"/><text x="480" y="283" font-size="12">I²C clock</text>
+  <path d="M290 330 H760" class="wi2c"/><text x="420" y="323" font-size="12" class="h">OE: HIGH = all motor pulses OFF (required)</text>
+  <!-- 10k pull-up OE -> logic + -->
+  <path d="M720 330 V560" class="wi2c"/>
+  <rect x="708" y="560" width="24" height="60" rx="5" fill="#e6c78a" stroke="#7a5a1e" stroke-width="2"/>
+  <line x1="708" y1="575" x2="732" y2="575" stroke="#a0522d" stroke-width="3"/>
+  <line x1="708" y1="588" x2="732" y2="588" stroke="#222" stroke-width="3"/>
+  <line x1="708" y1="601" x2="732" y2="601" stroke="#e88a1a" stroke-width="3"/>
+  <path d="M720 620 V690" class="w5v"/>
+  <circle cx="720" cy="330" r="5" fill="#1e9e4a"/><circle cx="720" cy="690" r="5" fill="#d22"/>
+  <text x="740" y="595" font-size="12" class="h">10 kΩ pull-up</text>
+
+  <!-- HC-SR04 optional -->
+  <path d="M290 370 H520" class="wopt"/><path d="M290 400 H520" class="wopt"/>
+  <rect x="520" y="355" width="170" height="85" rx="8" fill="#2a5db0" opacity="0.85"/>
+  <circle cx="565" cy="385" r="18" fill="#ccc" stroke="#888" stroke-width="3"/>
+  <circle cx="645" cy="385" r="18" fill="#ccc" stroke="#888" stroke-width="3"/>
+  <text x="605" y="428" font-size="12" text-anchor="middle" fill="#fff" class="h">HC-SR04 (optional)</text>
+  <path d="M560 440 V690" class="wopt"/><path d="M640 440 V720" class="wopt"/>
+  <circle cx="560" cy="690" r="4" fill="#999"/><circle cx="640" cy="720" r="4" fill="#999"/>
+
+  <!-- ===================== CAUGHT LED ===================== -->
+  <rect x="300" y="425" width="200" height="65" rx="8" fill="#f4ecfb" stroke="#8a3fd1" stroke-width="2" stroke-dasharray="4 3"/>
+  <path d="M290 440 H318" class="wled"/>
+  <!-- 220 ohm -->
+  <rect x="318" y="432" width="52" height="16" rx="5" fill="#e6c78a" stroke="#7a5a1e" stroke-width="2"/>
+  <line x1="330" y1="432" x2="330" y2="448" stroke="#d22" stroke-width="3"/>
+  <line x1="342" y1="432" x2="342" y2="448" stroke="#d22" stroke-width="3"/>
+  <line x1="354" y1="432" x2="354" y2="448" stroke="#a0522d" stroke-width="3"/>
+  <path d="M370 440 H405" class="wled"/>
+  <!-- LED symbol -->
+  <polygon points="405,428 405,452 428,440" fill="#e22" stroke="#900" stroke-width="2"/>
+  <line x1="430" y1="427" x2="430" y2="453" stroke="#900" stroke-width="3"/>
+  <path d="M418 424 l10 -12 M426 428 l10 -12" stroke="#e22" stroke-width="2"/>
+  <path d="M430 440 H470 V470 H290" class="wgnd"/>
+  <text x="400" y="423" font-size="11" fill="#900" class="h">+</text>
+  <text x="436" y="423" font-size="11" class="h">−</text>
+  <text x="344" y="463" font-size="11" text-anchor="middle" class="h">220 Ω</text>
+  <text x="305" y="510" font-size="12" fill="#6b2aa8" class="h">"CAUGHT" LED (red 5 mm)</text>
+  <text x="305" y="526" font-size="11" fill="#6b2aa8">mount on top, facing out</text>
+
+  <!-- Uno power to logic rail -->
+  <path d="M240 515 V690" class="w5v"/><circle cx="240" cy="690" r="5" fill="#d22"/>
+  <path d="M110 515 V720" class="wgnd"/><circle cx="110" cy="720" r="5" fill="#222"/>
+  <text x="250" y="610" font-size="12" fill="#b11" class="h">Uno 5V → + logic</text>
+
+  <!-- ===================== PCA9685 ===================== -->
+  <rect x="760" y="195" width="300" height="295" rx="10" fill="#2e7d46"/>
+  <text x="775" y="219" font-size="17" fill="#fff" class="h">PCA9685 · 16-ch PWM</text>
+  <text x="775" y="237" font-size="11" fill="#d6f0dd">I²C 0x40 · 50 Hz</text>
+  <g class="mono">
+    <text x="775" y="265" fill="#fff">SDA</text><text x="775" y="295" fill="#fff">SCL</text><text x="775" y="335" fill="#fff">OE</text>
+    <text x="1045" y="235" text-anchor="end" fill="#fff">CH0 LEFT  SIG</text>
+    <text x="1045" y="255" text-anchor="end" fill="#fff">V+</text>
+    <text x="1045" y="275" text-anchor="end" fill="#fff">GND</text>
+    <text x="1045" y="335" text-anchor="end" fill="#fff">CH1 RIGHT SIG</text>
+    <text x="1045" y="355" text-anchor="end" fill="#fff">V+</text>
+    <text x="1045" y="375" text-anchor="end" fill="#fff">GND</text>
+    <text x="790" y="478" text-anchor="middle" fill="#fff">VCC</text>
+    <text x="840" y="478" text-anchor="middle" fill="#fff">GND</text>
+  </g>
+  <rect x="940" y="410" width="110" height="72" rx="6" fill="#1f5a31" stroke="#9fd8ae"/>
+  <text x="995" y="430" font-size="12" text-anchor="middle" fill="#fff" class="h">V+ terminal</text>
+  <text x="995" y="446" font-size="10" text-anchor="middle" fill="#d6f0dd">servo power in</text>
+  <text x="970" y="475" font-size="15" text-anchor="middle" fill="#fff" class="h">+</text>
+  <text x="1025" y="475" font-size="15" text-anchor="middle" fill="#fff" class="h">−</text>
+  <!-- PCA logic power -->
+  <path d="M790 490 V690" class="w5v"/><circle cx="790" cy="690" r="5" fill="#d22"/>
+  <path d="M840 490 V720" class="wgnd"/><circle cx="840" cy="720" r="5" fill="#222"/>
+  <!-- PCA motor power (crosses logic rails, not connected) -->
+  <path d="M970 490 V820" class="halo"/><path d="M970 490 V820" class="w5v" stroke-width="4"/>
+  <path d="M1025 490 V850" class="halo"/><path d="M1025 490 V850" class="wgnd" stroke-width="4"/>
+  <circle cx="970" cy="820" r="6" fill="#d22"/><circle cx="1025" cy="850" r="6" fill="#222"/>
+  <text x="935" y="770" font-size="11" text-anchor="end" class="h">crosses, NOT joined</text>
+  <text x="935" y="785" font-size="11" text-anchor="end">to the logic rails</text>
+
+  <!-- ===================== servos ===================== -->
+  <g>
+    <rect x="1160" y="195" width="200" height="100" rx="10" fill="#3a3f47"/>
+    <text x="1260" y="220" font-size="14" text-anchor="middle" fill="#fff" class="h">MG996R · Left wheel</text>
+    <circle cx="1260" cy="258" r="20" fill="#ddd"/><rect x="1235" y="255" width="50" height="6" fill="#999"/>
+    <path d="M1060 230 H1160" class="wsig"/><path d="M1060 250 H1160" class="w5v"/><path d="M1060 270 H1160" class="wgnd"/>
+    <rect x="1160" y="320" width="200" height="100" rx="10" fill="#3a3f47"/>
+    <text x="1260" y="345" font-size="14" text-anchor="middle" fill="#fff" class="h">MG996R · Right wheel</text>
+    <circle cx="1260" cy="383" r="20" fill="#ddd"/><rect x="1235" y="380" width="50" height="6" fill="#999"/>
+    <path d="M1060 330 H1160" class="wsig"/><path d="M1060 350 H1160" class="w5v"/><path d="M1060 370 H1160" class="wgnd"/>
+    <text x="1260" y="445" font-size="11" text-anchor="middle" fill="#555">continuous rotation · pulse = speed + direction</text>
+  </g>
+
+  <!-- smoothing cap -->
+  <rect x="1150" y="815" width="30" height="40" rx="6" fill="#283a6a"/>
+  <text x="1165" y="900" font-size="12" text-anchor="middle" class="h">2200 µF</text>
+  <text x="1165" y="915" font-size="11" text-anchor="middle" fill="#555">servo smoothing cap (− to GND)</text>
+
+  <!-- ===================== camera ===================== -->
+  <rect x="1420" y="195" width="250" height="140" rx="12" fill="#2b2e33"/>
+  <rect x="1438" y="215" width="90" height="100" rx="4" fill="#111a2e"/>
+  <text x="1483" y="268" font-size="11" text-anchor="middle" fill="#8fb4ff">LCD</text>
+  <circle cx="1595" cy="270" r="24" fill="#111" stroke="#555" stroke-width="4"/><circle cx="1595" cy="270" r="9" fill="#3b5bb0"/>
+  <text x="1600" y="228" font-size="14" text-anchor="middle" fill="#fff" class="h">ESP32-P4-EYE</text>
+  <text x="1545" y="355" font-size="11" text-anchor="middle" fill="#555">camera node · front of chassis · facing forward</text>
+  <text x="1545" y="370" font-size="11" text-anchor="middle" fill="#555">own USB-C power · NO wires to this circuit</text>
+  <path d="M360 110 H1545 V195" stroke="#2a62c9" stroke-width="2.5" fill="none" stroke-dasharray="8 6"/>
+  <text x="900" y="102" font-size="13" text-anchor="middle" fill="#2a62c9" class="h">Wi-Fi video stream → laptop (local network only)</text>
+
+  <!-- ===================== battery + switch ===================== -->
+  <text x="40" y="765" font-size="15" class="h">5 V battery pack (≥ 3 A)</text>
+  <rect x="40" y="780" width="210" height="100" rx="10" fill="#3d4a3a"/>
+  <rect x="250" y="805" width="10" height="20" rx="2" fill="#3d4a3a"/>
+  <g fill="#cfd8c8"><rect x="55" y="795" width="40" height="70" rx="5"/><rect x="100" y="795" width="40" height="70" rx="5"/><rect x="145" y="795" width="40" height="70" rx="5"/><rect x="190" y="795" width="40" height="70" rx="5"/></g>
+  <text x="145" y="836" font-size="13" text-anchor="middle" class="h">5 V  BATTERY</text>
+  <text x="40" y="900" font-size="11" fill="#555">power bank (via USB-C breakout) or 4×AA NiMH</text>
+  <text x="40" y="915" font-size="11" fill="#a35a00" class="h">⚠ never a laptop USB port for the motors</text>
+  <text x="268" y="803" font-size="15" fill="#d22" class="h">+</text>
+  <text x="268" y="872" font-size="15" class="h">−</text>
+  <path d="M260 815 H290" class="w5v" stroke-width="4"/>
+  <rect x="290" y="795" width="70" height="40" rx="6" fill="#fff3c4" stroke="#b58a00" stroke-width="2"/>
+  <circle cx="305" cy="822" r="4" fill="#555"/><circle cx="345" cy="822" r="4" fill="#555"/>
+  <line x1="305" y1="822" x2="340" y2="806" stroke="#333" stroke-width="3"/>
+  <text x="325" y="776" font-size="11" text-anchor="middle" class="h" fill="#8a6500">POWER SWITCH</text>
+  <text x="325" y="790" font-size="10" text-anchor="middle" fill="#555">cuts all motor power</text>
+  <path d="M360 815 H372 V820 H380" class="w5v" stroke-width="4"/>
+  <path d="M255 865 H340 V850 H380" class="wgnd" stroke-width="4"/>
+
+  <!-- ===================== notes ===================== -->
+  <rect x="40" y="945" width="660" height="225" rx="10" fill="#fde8e8" stroke="#c33" stroke-width="2"/>
+  <text x="370" y="972" font-size="15" text-anchor="middle" fill="#b11" class="h">⚠ POWER &amp; SAFETY</text>
+  <g font-size="13">
+    <text x="60" y="1000" fill="#b11" class="h">Battery 5 V → switch → MOTOR rail → PCA9685 V+ only. Never onto the logic rail.</text>
+    <text x="60" y="1024">Logic rail = Uno 5V: feeds PCA9685 VCC, the 10 kΩ pull-up and the sensor only.</text>
+    <text x="60" y="1048">All grounds common (logic − and motor − tied). LED − goes to any Uno GND pin.</text>
+    <text x="60" y="1072">D8 → OE is required: firmware drives it HIGH on boot / e-stop / deadman.</text>
+    <text x="60" y="1096">LED is a signal only: it cannot move anything; firmware turns it off after 3 s.</text>
+    <text x="60" y="1120">Always fit the physical switch. Speed capped at 30 % in firmware.</text>
+    <text x="60" y="1144">Robot near children: slow, soft body, e-stop within reach.</text>
+  </g>
+
+  <rect x="730" y="945" width="560" height="225" rx="10" fill="#fff" stroke="#ccc" stroke-width="2"/>
+  <text x="750" y="972" font-size="15" class="h">WIRE COLOR KEY</text>
+  <g font-size="13">
+    <line x1="750" y1="997" x2="790" y2="997" class="w5v"/><text x="800" y="1001">5 V / V+</text>
+    <line x1="920" y1="997" x2="960" y2="997" class="wgnd"/><text x="970" y="1001">Ground</text>
+    <line x1="1080" y1="997" x2="1120" y2="997" class="wsig"/><text x="1130" y="1001">PWM signal</text>
+    <line x1="750" y1="1027" x2="790" y2="1027" class="wi2c"/><text x="800" y="1031">I²C / OE</text>
+    <line x1="920" y1="1027" x2="960" y2="1027" class="wled"/><text x="970" y="1031">LED signal (D7)</text>
+    <line x1="1080" y1="1027" x2="1120" y2="1027" class="wtie"/><text x="1130" y="1031">GND tie</text>
+    <line x1="750" y1="1057" x2="790" y2="1057" class="wopt"/><text x="800" y="1061">optional (HC-SR04)</text>
+    <text x="750" y="1095" class="h">LED parts: 1× red 5 mm LED + 1× 220 Ω resistor (330 Ω also fine).</text>
+    <text x="750" y="1117">LED long leg (+) toward the resistor / D7. If it never lights,</text>
+    <text x="750" y="1137">it is probably in backwards: flip it.</text>
+    <text x="750" y="1159" fill="#555">Serial: L1 = on (auto-off 3 s), L0 = off.</text>
+  </g>
+</svg>
+</body></html>

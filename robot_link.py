@@ -124,6 +124,11 @@ class RobotLink:
         self._arm_sent = 0.0
         self._send("Z")
 
+    def caught_led(self) -> None:
+        """Light the "you are caught" LED on the robot (D7). The Uno turns it off after 3 s by itself.
+        Works disarmed; never moves anything."""
+        self._send("L1")
+
     def drive(self, left: float, right: float) -> None:
         """Send V only while armed (or just after arm(), before the next ST frame confirms it).
         Disarmed, V would only earn ERR E04/E08 thirty times a second."""

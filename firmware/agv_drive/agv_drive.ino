@@ -11,6 +11,7 @@
  * Wiring: A4 SDA, A5 SCL, 5V -> PCA9685 VCC, GND common; PCA9685 CH0 = LEFT wheel, CH1 = RIGHT wheel;
  *         motor 5V ONLY on the PCA9685 V+ terminal; D8 -> PCA9685 OE (REQUIRED here: hardware output cut);
  *         optional HC-SR04: TRIG D9, ECHO D10 (set USE_ULTRASONIC 1).
+ *         "caught" LED: D7 -> 220 ohm -> LED long leg (+), short leg (-) -> GND.
  * Serial: 115200 baud, "Newline".   Library: Adafruit PWM Servo Driver Library.
  *
  * Commands:                                   Replies
@@ -20,6 +21,8 @@
  *   V<l>,<r>  speeds in percent, -100..100    OK V     (clamped to +/-MAX_SPEED_PCT; needs armed)
  *   P       link check (does NOT feed the deadman)   OK P
  *   S       force a status frame (does NOT feed the deadman)
+ *   L1 / L0 "caught" LED on D7 on / off   OK L1 / OK L0  (works disarmed; auto-off after LED_ON_MS;
+ *                                                        does NOT feed the deadman, never moves anything)
  *   Only V (and M1 arming) restart the 250 ms deadman: the host must stream V to keep moving.
  *   Status 10 Hz: ST <left%>,<right%>,<armed>,<dist_cm or -1>,<uptime_ms>
  * Errors: ERR E01 unknown verb, E02 bad format, E04 not armed, E05 bad checksum, E07 deadman, E08 e-stop latched.
@@ -37,6 +40,7 @@
 static const uint8_t PIN_OE   = 8;
 static const uint8_t PIN_TRIG = 9;
 static const uint8_t PIN_ECHO = 10;
+static const uint8_t PIN_LED  = 7;     // "you are caught" LED (via 220 ohm)
 static const uint8_t PCA_ADDR = 0x40;
 static const uint8_t CH_LEFT  = 0;
 static const uint8_t CH_RIGHT = 1;
@@ -67,6 +71,7 @@ static const int  STOP_CM          = 25;    // ultrasonic: block pure-forward mo
 static const unsigned long BAUD               = 115200UL;
 static const unsigned long DEADMAN_TIMEOUT_MS = 250UL;
 static const unsigned long STATUS_INTERVAL_MS = 100UL;
+static const unsigned long LED_ON_MS = 3000UL;   // LED turns itself off; matches the app's 3 s banner
 static const unsigned long DRIVE_UPDATE_MS    = 20UL;
 static const size_t RX_BUFFER_SIZE = 40;
 
@@ -78,6 +83,8 @@ static bool armed = false;
 static bool estopLatched = true;     // boot latched
 static bool deadmanFired = false;
 static bool pcaOk = false;
+static bool ledOn = false;
+static unsigned long ledOnMs = 0;
 static int  distanceCm = -1;
 
 static unsigned long lastCommandMs = 0, lastStatusMs = 0, lastDriveMs = 0, lastRangeMs = 0;
@@ -194,6 +201,13 @@ static void handleCommand(char* line, size_t length) {
     case 'S':
       lastStatusMs = 0;
       return;
+    case 'L':                          // signal LED only: no effect on motors or the deadman
+      if (bodyLength < 2 || (line[1] != '0' && line[1] != '1')) { emitError("E02", "L needs 0 or 1"); return; }
+      ledOn = (line[1] == '1');
+      ledOnMs = millis();
+      digitalWrite(PIN_LED, ledOn ? HIGH : LOW);
+      Serial.println(ledOn ? F("OK L1") : F("OK L0"));
+      return;
     case 'M': {
       if (bodyLength < 2) { emitError("E02", "M needs 0 or 1"); return; }
       if (line[1] != '1') {            // disarm always honoured
@@ -268,6 +282,10 @@ static void updateDrive() {
   writeWheel(CH_RIGHT, currentR, INVERT_RIGHT, NEUTRAL_US_RIGHT, DEADBAND_US_RIGHT, GAIN_RIGHT, &ditherErrR);
 }
 
+static void updateLed() {
+  if (ledOn && millis() - ledOnMs >= LED_ON_MS) { ledOn = false; digitalWrite(PIN_LED, LOW); }
+}
+
 static void sendStatus() {
   const unsigned long now = millis();
   if (now - lastStatusMs < STATUS_INTERVAL_MS) return;
@@ -298,6 +316,8 @@ static void pumpSerial() {
 void setup() {
   pinMode(PIN_OE, OUTPUT);
   digitalWrite(PIN_OE, HIGH);        // outputs OFF until armed
+  pinMode(PIN_LED, OUTPUT);
+  digitalWrite(PIN_LED, LOW);
 #if USE_ULTRASONIC
   pinMode(PIN_TRIG, OUTPUT); digitalWrite(PIN_TRIG, LOW);
   pinMode(PIN_ECHO, INPUT);
@@ -317,7 +337,7 @@ void setup() {
     writeNeutral();
   }
   lastCommandMs = millis();
-  Serial.print(F("OK BOOT killswitch-agv-drive v1.4-dither"));
+  Serial.print(F("OK BOOT killswitch-agv-drive v1.5-led"));
   Serial.println(pcaOk ? F(" pwm=ok") : F(" PCA9685 NOT FOUND"));
 }
 
@@ -328,5 +348,6 @@ void loop() {
   readRange();
 #endif
   updateDrive();
+  updateLed();
   sendStatus();
 }
