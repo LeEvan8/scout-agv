@@ -33,6 +33,16 @@ P does not keep it driving (E07), overflow line ignored, floor drive.
 - Uno is on COM57 (CH340 clone). Python: `.venv\Scripts\python.exe` (3.12).
 - The app's drive loop must send V at >= 10 Hz from the SAME loop that decides motion, never from a separate
   keep-alive thread, so a frozen vision/control loop stops the robot.
+- Laptop: i7-8550U, Intel UHD 620 (no CUDA) -> CPU inference. Webcam 0 = Integrated (25 fps), 1 = AX USB2.0 (10 fps).
+- vision/ (2a, built 2026-11-26): source.py (threaded newest-frame grabber, frame age), detector.py (YOLO11n-pose ONNX,
+  letterbox + NMS; matches ultralytics output within 0.05 px), head.py (face kpts -> weak face + shoulders ->
+  shoulders -> box top; non-face = "est."), tracker.py (IoU tracks, confirm 3 of 5 frames), overlay.py.
+  Speed: 640 model ~66 ms (15 fps), 416 model ~24 ms (41 fps). Demo: vision_demo.py --source 0|URL.
+- models/*.onnx are git-ignored; recreate with tools/export_model.py in a throwaway venv (needs torch).
+- LICENSE RISK: YOLO11 weights/code are AGPL-3.0. Fine for a public AGPL repo / testing; commercial product needs an
+  Ultralytics license or a permissively licensed model (decide before pilot/sales).
+- Auto-tracking decision (2026-11-26): turn in place only, level-1 speed, only while teacher holds T; stop on target
+  lost, stale frame, or SPACE.
 
 ## Rules — do not break these
 - Never raise MAX_SPEED_PCT, remove/lengthen the deadman (keep 250 ms), or bypass the checksummed arm without asking me.

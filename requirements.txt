@@ -1,2 +1,5 @@
 pyserial
 pygame
+numpy
+opencv-python
+onnxruntime
