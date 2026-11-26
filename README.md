@@ -1,12 +1,12 @@
-# Scout AGV (Phase 1)
+# Scout AGV (Phase 1 complete)
 
 Standalone project. You do NOT need the old Killswitch repo.
 
 ## 1. Upload the firmware
 Open `firmware/agv_drive/agv_drive.ino` in the Arduino IDE (needs the Adafruit PWM Servo Driver library),
 choose Board = Arduino Uno and your port, then Upload.
-Already set for this robot (firmware v1.2-gain): neutral 1586 / 1586 us, dead-zone compensation 60 / 56 us,
-straight-line trim GAIN_LEFT 0.90, speed cap 30 %, deadman 250 ms. Every servo is different: re-measure yours
+Already set for this robot (firmware v1.4-dither): neutral 1586 / 1586 us, dead-zone compensation 60 / 56 us,
+straight-line trim GAIN_LEFT 1.00, speed cap 30 %, deadman 250 ms. Every servo is different: re-measure yours
 with `trim.py` (see PHASE1.md) before trusting these numbers.
 Close the Serial Monitor afterwards (only one program can use the port).
 

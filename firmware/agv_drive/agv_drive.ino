@@ -18,8 +18,9 @@
  *   M0      disarm + stop                     OK M0
  *   Z       e-stop (latched until M1*7C)      OK Z
  *   V<l>,<r>  speeds in percent, -100..100    OK V     (clamped to +/-MAX_SPEED_PCT; needs armed)
- *   P       heartbeat                         OK P
- *   S       force a status frame
+ *   P       link check (does NOT feed the deadman)   OK P
+ *   S       force a status frame (does NOT feed the deadman)
+ *   Only V (and M1 arming) restart the 250 ms deadman: the host must stream V to keep moving.
  *   Status 10 Hz: ST <left%>,<right%>,<armed>,<dist_cm or -1>,<uptime_ms>
  * Errors: ERR E01 unknown verb, E02 bad format, E04 not armed, E05 bad checksum, E07 deadman, E08 e-stop latched.
  */
@@ -54,7 +55,7 @@ static const int  DEADBAND_US_RIGHT = 56;
 // Straight-line trim: scales the part of each wheel's pulse past its dead band. 1.0 = untouched.
 // Only ever LOWER the stronger wheel (max 1.0), so the 30 % cap can never be exceeded.
 // Robot curves RIGHT -> left is stronger -> lower GAIN_LEFT. Curves LEFT -> lower GAIN_RIGHT.
-static constexpr float GAIN_LEFT  = 0.90f;
+static constexpr float GAIN_LEFT  = 1.00f;
 static constexpr float GAIN_RIGHT = 1.00f;
 static_assert(GAIN_LEFT  > 0.0f && GAIN_LEFT  <= 1.0f, "GAIN_LEFT must be 0..1");
 static_assert(GAIN_RIGHT > 0.0f && GAIN_RIGHT <= 1.0f, "GAIN_RIGHT must be 0..1");
@@ -82,30 +83,45 @@ static int  distanceCm = -1;
 static unsigned long lastCommandMs = 0, lastStatusMs = 0, lastDriveMs = 0, lastRangeMs = 0;
 static char rxBuffer[RX_BUFFER_SIZE];
 static size_t rxLength = 0;
+static bool rxDiscarding = false;    // true after an over-long line, until its newline arrives
 
 // ---------------------------------------------------------------- drive ----
 static uint16_t usToTicks(int us) { return (uint16_t)(((long)us * 4096L) / 20000L); }   // 50 Hz
 
 static float clampf(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : v); }
 
-// pct in -MAX_SPEED_PCT..MAX_SPEED_PCT -> pulse. 0 -> neutral; otherwise jump past the dead band,
-// then scale linearly so |pct| == MAX_SPEED_PCT lands on the same top pulse as without compensation.
-static void writeWheel(uint8_t ch, float pct, bool invert, int neutral, int deadband, float gain) {
+static const float TICKS_PER_US = 4096.0f / 20000.0f;                   // ~4.9 us per PCA9685 step
+static const float TOP_US       = (MAX_SPEED_PCT / 100.0f) * FULL_SCALE_US; // 120 us at 30 %
+static const int   MAX_OFFSET_TICKS = (int)(TOP_US * TICKS_PER_US);       // 24: hard ceiling, rounds DOWN
+static float ditherErrL = 0, ditherErrR = 0;
+
+// pct in -MAX_SPEED_PCT..MAX_SPEED_PCT -> pulse. 0 -> exact neutral; otherwise jump past the dead band,
+// then scale linearly so |pct| == MAX_SPEED_PCT lands on the top pulse (never more than MAX_OFFSET_TICKS).
+// Dithering: the ideal offset is usually between two PCA9685 steps (e.g. 16.4). The leftover fraction is
+// carried to the next 20 ms frame, so the wheel gets 16,16,17,16,16,... and averages 16.4. This lets
+// GAIN_* make changes smaller than one step.
+static void writeWheel(uint8_t ch, float pct, bool invert, int neutral, int deadband, float gain, float* err) {
   if (invert) pct = -pct;
   pct = clampf(pct, -MAX_SPEED_PCT, MAX_SPEED_PCT);
-  const float topUs = (MAX_SPEED_PCT / 100.0f) * FULL_SCALE_US;      // 120 us at 30 %
   const float mag = pct < 0 ? -pct : pct;
-  int offset = 0;
+  int offsetTicks = 0;
   if (mag >= 0.5f) {
-    offset = (int)(deadband + gain * (mag / MAX_SPEED_PCT) * (topUs - deadband));
-    if (pct < 0) offset = -offset;
+    float ideal = (deadband + gain * (mag / MAX_SPEED_PCT) * (TOP_US - deadband)) * TICKS_PER_US;
+    if (pct < 0) ideal = -ideal;
+    const float want = ideal + *err;
+    offsetTicks = (int)floorf(want + 0.5f);
+    if (offsetTicks >  MAX_OFFSET_TICKS) offsetTicks =  MAX_OFFSET_TICKS;   // never above the cap
+    if (offsetTicks < -MAX_OFFSET_TICKS) offsetTicks = -MAX_OFFSET_TICKS;
+    *err = clampf(want - offsetTicks, -1.0f, 1.0f);
+  } else {
+    *err = 0;
   }
-  pwm.setPWM(ch, 0, usToTicks(neutral + offset));
+  pwm.setPWM(ch, 0, (uint16_t)(usToTicks(neutral) + offsetTicks));
 }
 
 static void writeNeutral() {
-  writeWheel(CH_LEFT, 0, INVERT_LEFT, NEUTRAL_US_LEFT, DEADBAND_US_LEFT, GAIN_LEFT);
-  writeWheel(CH_RIGHT, 0, INVERT_RIGHT, NEUTRAL_US_RIGHT, DEADBAND_US_RIGHT, GAIN_RIGHT);
+  writeWheel(CH_LEFT, 0, INVERT_LEFT, NEUTRAL_US_LEFT, DEADBAND_US_LEFT, GAIN_LEFT, &ditherErrL);
+  writeWheel(CH_RIGHT, 0, INVERT_RIGHT, NEUTRAL_US_RIGHT, DEADBAND_US_RIGHT, GAIN_RIGHT, &ditherErrR);
 }
 
 /* Stop everything NOW: neutral pulses, then cut the PCA9685 outputs in hardware (OE high). */
@@ -170,13 +186,12 @@ static void handleCommand(char* line, size_t length) {
   const bool checksummed = verifyChecksum(line, length, &bodyLength);
 
   switch (verb) {
+    // P and S do NOT feed the deadman: only a fresh V keeps the wheels turning. Otherwise a host
+    // that still pings while its control loop is frozen would keep the robot driving at the old speed.
     case 'P':
-      lastCommandMs = millis();
-      deadmanFired = false;
       Serial.println(F("OK P"));
       return;
     case 'S':
-      lastCommandMs = millis();
       lastStatusMs = 0;
       return;
     case 'M': {
@@ -249,8 +264,8 @@ static void updateDrive() {
 #endif
   currentL += clampf(tL - currentL, -ACCEL_PCT_PER_UPDATE, ACCEL_PCT_PER_UPDATE);
   currentR += clampf(tR - currentR, -ACCEL_PCT_PER_UPDATE, ACCEL_PCT_PER_UPDATE);
-  writeWheel(CH_LEFT,  currentL, INVERT_LEFT,  NEUTRAL_US_LEFT,  DEADBAND_US_LEFT,  GAIN_LEFT);
-  writeWheel(CH_RIGHT, currentR, INVERT_RIGHT, NEUTRAL_US_RIGHT, DEADBAND_US_RIGHT, GAIN_RIGHT);
+  writeWheel(CH_LEFT,  currentL, INVERT_LEFT,  NEUTRAL_US_LEFT,  DEADBAND_US_LEFT,  GAIN_LEFT,  &ditherErrL);
+  writeWheel(CH_RIGHT, currentR, INVERT_RIGHT, NEUTRAL_US_RIGHT, DEADBAND_US_RIGHT, GAIN_RIGHT, &ditherErrR);
 }
 
 static void sendStatus() {
@@ -269,11 +284,13 @@ static void pumpSerial() {
   while (Serial.available() > 0) {
     const char c = (char)Serial.read();
     if (c == '\n' || c == '\r') {
+      if (rxDiscarding) { rxDiscarding = false; rxLength = 0; continue; }   // end of the bad line
       if (rxLength > 0) { rxBuffer[rxLength] = '\0'; handleCommand(rxBuffer, rxLength); rxLength = 0; }
       continue;
     }
+    if (rxDiscarding) continue;                    // drop the rest of an over-long line
     if (rxLength < RX_BUFFER_SIZE - 1) rxBuffer[rxLength++] = c;
-    else { rxLength = 0; emitError("E02", "rx overflow, line discarded"); }
+    else { rxLength = 0; rxDiscarding = true; emitError("E02", "rx overflow, line discarded"); }
   }
 }
 
@@ -300,7 +317,7 @@ void setup() {
     writeNeutral();
   }
   lastCommandMs = millis();
-  Serial.print(F("OK BOOT killswitch-agv-drive v1.2-gain"));
+  Serial.print(F("OK BOOT killswitch-agv-drive v1.4-dither"));
   Serial.println(pcaOk ? F(" pwm=ok") : F(" PCA9685 NOT FOUND"));
 }
 
